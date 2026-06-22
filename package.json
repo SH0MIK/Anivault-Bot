@@ -1,0 +1,21 @@
+{
+  "name": "anivault-bot",
+  "version": "1.0.0",
+  "description": "AniVault Discord Bot — hosted on Vercel",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod",
+    "register-commands": "ts-node scripts/register-commands.ts"
+  },
+  "dependencies": {
+    "@discordjs/rest": "^2.3.0",
+    "discord-api-types": "^0.37.83",
+    "discord-interactions": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vercel/node": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}
