@@ -55,7 +55,7 @@ export function buildLoginEmbed(user: UserInfo, method: string): APIEmbed {
     const displayId = user.display_id ?? user.id;
     return {
         title:       '👤 User Logged In',
-        description: `**`\`${user.username}\``** just signed in.`,
+        description: `**[${user.username}](${url})** just signed in.`,
         color:       0x5865F2,
         url,
         fields: [
