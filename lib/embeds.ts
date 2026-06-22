@@ -12,7 +12,7 @@ export interface UserInfo {
 const SITE_URL = 'https://www.anivault.co';
 
 const METHOD_LABEL: Record<string, string> = {
-    email:   '📧 Email / Password',
+    email:   '📧 Email',
     google:  '🔵 Google',
     discord: '🎮 Discord',
 };
@@ -25,7 +25,7 @@ function maskEmail(email: string): string {
 }
 
 function profileUrl(username: string): string {
-    return `${SITE_URL}/user?u=${encodeURIComponent(username)}`;
+    return `${SITE_URL}/u/${encodeURIComponent(username)}`;
 }
 
 // ── New registration embed (green) ──────────────────────────
