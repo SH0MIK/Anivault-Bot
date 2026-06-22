@@ -28,9 +28,10 @@ function profileUrl(username: string): string {
     return `${SITE_URL}/user?u=${encodeURIComponent(username)}`;
 }
 
-function profileLink(username: string): string {
-    const url = profileUrl(username);
-    return `[u/${username}](${url})`;
+function profileDisplayLink(username: string): string {
+    const realUrl = profileUrl(username);
+    const displayUrl = `${SITE_URL}/u/${username}`;
+    return `[${displayUrl}](${realUrl})`;
 }
 
 // ── New registration embed (green) ──────────────────────────
@@ -39,13 +40,12 @@ export function buildRegisterEmbed(user: UserInfo, method: string): APIEmbed {
     const displayId = user.display_id ?? user.id;
     return {
         title:       '🎉 New User Joined AniVault!',
-        description: `**[${user.username}](${url})** just created an account.`,
+        description: `**[${user.username}](${url})** just created an account.\n${profileDisplayLink(user.username)}`,
         color:       0x57F287,
         url,
         fields: [
             { name: 'Username',      value: `\`${user.username}\``,                              inline: true },
-            { name: 'ID',            value: `\`#${displayId}\``,                                 inline: true },
-            { name: 'Profile',       value: profileLink(user.username),                           inline: true },
+            { name: 'User ID',       value: `\`#${displayId}\``,                                 inline: true },
             { name: 'Email',         value: `\`${user.email ? maskEmail(user.email) : 'N/A'}\``, inline: true },
             { name: 'Signed up via', value: METHOD_LABEL[method] ?? method,                      inline: true },
         ],
@@ -61,13 +61,12 @@ export function buildLoginEmbed(user: UserInfo, method: string): APIEmbed {
     const displayId = user.display_id ?? user.id;
     return {
         title:       '👤 User Logged In',
-        description: `**[${user.username}](${url})** just signed in.`,
+        description: `**[${user.username}](${url})** just signed in.\n${profileDisplayLink(user.username)}`,
         color:       0x5865F2,
         url,
         fields: [
-            { name: 'Username',  value: `\`${user.username}\``,         inline: true },
-            { name: 'ID',        value: `\`#${displayId}\``,            inline: true },
-            { name: 'Profile',   value: profileLink(user.username),      inline: true },
+            { name: 'Username',  value: `\`${user.username}\``,          inline: true },
+            { name: 'User ID',   value: `\`#${displayId}\``,             inline: true },
             { name: 'Login via', value: METHOD_LABEL[method] ?? method,  inline: true },
         ],
         thumbnail: user.avatar_url ? { url: user.avatar_url } : undefined,
