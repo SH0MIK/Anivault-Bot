@@ -28,19 +28,13 @@ function profileUrl(username: string): string {
     return `${SITE_URL}/user?u=${encodeURIComponent(username)}`;
 }
 
-function profileDisplayLink(username: string): string {
-    const realUrl = profileUrl(username);
-    const displayUrl = `${SITE_URL}/u/${username}`;
-    return `[${displayUrl}](${realUrl})`;
-}
-
 // ── New registration embed (green) ──────────────────────────
 export function buildRegisterEmbed(user: UserInfo, method: string): APIEmbed {
     const url = profileUrl(user.username);
     const displayId = user.display_id ?? user.id;
     return {
         title:       '🎉 New User Joined AniVault!',
-        description: `**[${user.username}](${url})** just created an account.\n${profileDisplayLink(user.username)}`,
+        description: `**[${user.username}](${url})** just created an account.`,
         color:       0x57F287,
         url,
         fields: [
@@ -61,7 +55,7 @@ export function buildLoginEmbed(user: UserInfo, method: string): APIEmbed {
     const displayId = user.display_id ?? user.id;
     return {
         title:       '👤 User Logged In',
-        description: `**[${user.username}](${url})** just signed in.\n${profileDisplayLink(user.username)}`,
+        description: `**[${user.username}](${url})** just signed in.`,
         color:       0x5865F2,
         url,
         fields: [
