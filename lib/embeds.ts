@@ -13,7 +13,7 @@ const SITE_URL = 'https://www.anivault.co';
 
 const METHOD_LABEL: Record<string, string> = {
     email:   '📧 Email',
-    google:  ':google: Google',
+    google:  '🔵 Google',
     discord: '🎮 Discord',
 };
 
