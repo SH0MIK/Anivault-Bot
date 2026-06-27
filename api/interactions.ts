@@ -10,8 +10,9 @@ import { buildAnimeEmbed, buildUserEmbed, type AnimeInfo, type ProfileInfo } fro
 
 export const config = { api: { bodyParser: false } };
 
-const SITE_URL  = 'https://www.anivault.co';
-const MAL_CLIENT = process.env.MAL_CLIENT_ID!;
+const MAL_CLIENT   = process.env.MAL_CLIENT_ID!;
+// Route /user lookups through Railway (InfinityFree blocks Vercel's IPs directly)
+const RAILWAY_URL  = process.env.RAILWAY_URL!; // e.g. https://ap1249-production-304e.up.railway.app
 
 async function getRawBody(req: VercelRequest): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -100,8 +101,11 @@ async function handleUser(
     }
 
     try {
-        const apiUrl = `${SITE_URL}/api/discord_user.php?username=${encodeURIComponent(username)}&secret=${process.env.BOT_SECRET}`;
-        const apiRes = await fetch(apiUrl);
+        // Route through Railway proxy — InfinityFree blocks Vercel's IPs directly
+        const apiUrl = `${RAILWAY_URL}/discord/user-lookup?username=${encodeURIComponent(username)}`;
+        const apiRes = await fetch(apiUrl, {
+            headers: { 'x-bot-secret': process.env.BOT_SECRET! },
+        });
 
         if (apiRes.status === 404) {
             return res.json({
@@ -110,7 +114,7 @@ async function handleUser(
             });
         }
 
-        if (!apiRes.ok) throw new Error(`AniVault API error: ${apiRes.status}`);
+        if (!apiRes.ok) throw new Error(`Relay error: ${apiRes.status}`);
 
         const data = await apiRes.json() as any;
         if (!data.user) throw new Error('No user in response');
