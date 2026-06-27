@@ -1,8 +1,4 @@
 // api/interactions.ts
-// Handles Discord slash command interactions.
-// Discord POSTs here whenever someone uses a slash command in your server.
-// Add new commands in the switch block below + register them via scripts/register-commands.ts
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyKey } from 'discord-interactions';
 import {
@@ -10,9 +6,12 @@ import {
     InteractionResponseType,
     type APIChatInputApplicationCommandInteraction,
 } from 'discord-api-types/v10';
+import { buildAnimeEmbed, buildUserEmbed, type AnimeInfo, type ProfileInfo } from '../lib/embeds';
 
-// Vercel must receive the raw body for signature verification — disable bodyParser
 export const config = { api: { bodyParser: false } };
+
+const SITE_URL   = 'https://www.anivault.co';
+const MAL_CLIENT = process.env.MAL_CLIENT_ID!;
 
 async function getRawBody(req: VercelRequest): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -23,10 +22,120 @@ async function getRawBody(req: VercelRequest): Promise<Buffer> {
     });
 }
 
+// ── /anime handler ────────────────────────────────────────────
+async function handleAnime(
+    cmd: APIChatInputApplicationCommandInteraction,
+    res: VercelResponse
+) {
+    const query = (cmd.data.options?.find(o => o.name === 'title') as any)?.value as string;
+    if (!query) {
+        return res.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: { content: '❌ Please provide an anime title.', flags: 64 },
+        });
+    }
+
+    try {
+        // Search MAL
+        const searchUrl = `https://api.myanimelist.net/v2/anime?q=${encodeURIComponent(query)}&limit=1&fields=id,title,alternative_titles,main_picture,synopsis,mean,rank,num_episodes,status,media_type,rating,genres,studios,source`;
+        const searchRes = await fetch(searchUrl, {
+            headers: { 'X-MAL-CLIENT-ID': MAL_CLIENT },
+        });
+
+        if (!searchRes.ok) throw new Error(`MAL API error: ${searchRes.status}`);
+
+        const searchData = await searchRes.json();
+        const node = searchData?.data?.[0]?.node;
+
+        if (!node) {
+            return res.json({
+                type: InteractionResponseType.ChannelMessageWithSource,
+                data: { content: `❌ No results found for **${query}**.`, flags: 64 },
+            });
+        }
+
+        // Normalise into AnimeInfo shape
+        const anime: AnimeInfo = {
+            mal_id:        node.id,
+            title:         node.title,
+            title_english: node.alternative_titles?.en || '',
+            synopsis:      node.synopsis,
+            mean:          node.mean,
+            rank:          node.rank,
+            num_episodes:  node.num_episodes,
+            status:        node.status,
+            media_type:    node.media_type,
+            rating:        node.rating,
+            genres:        node.genres ?? [],
+            studios:       node.studios ?? [],
+            images:        { jpg: {
+                large_image_url: node.main_picture?.large,
+                image_url:       node.main_picture?.medium,
+            }},
+            source:        node.source,
+        };
+
+        return res.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: { embeds: [buildAnimeEmbed(anime)] },
+        });
+    } catch (err: any) {
+        console.error('[/anime]', err?.message);
+        return res.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: { content: '❌ Failed to fetch anime info. Try again later.', flags: 64 },
+        });
+    }
+}
+
+// ── /user handler ─────────────────────────────────────────────
+async function handleUser(
+    cmd: APIChatInputApplicationCommandInteraction,
+    res: VercelResponse
+) {
+    const username = (cmd.data.options?.find(o => o.name === 'username') as any)?.value as string;
+    if (!username) {
+        return res.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: { content: '❌ Please provide a username.', flags: 64 },
+        });
+    }
+
+    try {
+        const apiUrl = `${SITE_URL}/api/discord_user.php?username=${encodeURIComponent(username)}&secret=${process.env.BOT_SECRET}`;
+        const apiRes = await fetch(apiUrl);
+
+        if (apiRes.status === 404) {
+            return res.json({
+                type: InteractionResponseType.ChannelMessageWithSource,
+                data: { content: `❌ User **${username}** not found on AniVault.`, flags: 64 },
+            });
+        }
+
+        if (!apiRes.ok) throw new Error(`AniVault API error: ${apiRes.status}`);
+
+        const data = await apiRes.json();
+        if (!data.user) throw new Error('No user in response');
+
+        const profile: ProfileInfo = data.user;
+
+        return res.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: { embeds: [buildUserEmbed(profile)] },
+        });
+    } catch (err: any) {
+        console.error('[/user]', err?.message);
+        return res.json({
+            type: InteractionResponseType.ChannelMessageWithSource,
+            data: { content: '❌ Failed to fetch user info. Try again later.', flags: 64 },
+        });
+    }
+}
+
+// ── Main handler ──────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') return res.status(405).end();
 
-    // Verify the request is genuinely from Discord
     const signature = req.headers['x-signature-ed25519'] as string;
     const timestamp  = req.headers['x-signature-timestamp'] as string;
     const rawBody    = await getRawBody(req);
@@ -36,26 +145,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const interaction = JSON.parse(rawBody.toString());
 
-    // ── PING (Discord endpoint verification) ────────────────
     if (interaction.type === InteractionType.Ping) {
         return res.json({ type: InteractionResponseType.Pong });
     }
 
-    // ── Slash commands ───────────────────────────────────────
     if (interaction.type === InteractionType.ApplicationCommand) {
-        const cmd = interaction as APIChatInputApplicationCommandInteraction;
+        const cmd  = interaction as APIChatInputApplicationCommandInteraction;
         const name = cmd.data.name;
 
         switch (name) {
-            // ── Add new commands here as you build features ──
-            // case 'stats':   return handleStats(cmd, res);
-            // case 'anime':   return handleAnime(cmd, res);
-            // case 'profile': return handleProfile(cmd, res);
-
+            case 'anime': return handleAnime(cmd, res);
+            case 'user':  return handleUser(cmd, res);
             default:
                 return res.json({
                     type: InteractionResponseType.ChannelMessageWithSource,
-                    data: { content: '❓ Unknown command.', flags: 64 }, // 64 = ephemeral
+                    data: { content: '❓ Unknown command.', flags: 64 },
                 });
         }
     }
