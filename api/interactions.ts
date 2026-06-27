@@ -10,7 +10,7 @@ import { buildAnimeEmbed, buildUserEmbed, type AnimeInfo, type ProfileInfo } fro
 
 export const config = { api: { bodyParser: false } };
 
-const SITE_URL   = 'https://www.anivault.co';
+const SITE_URL  = 'https://www.anivault.co';
 const MAL_CLIENT = process.env.MAL_CLIENT_ID!;
 
 async function getRawBody(req: VercelRequest): Promise<Buffer> {
@@ -36,7 +36,6 @@ async function handleAnime(
     }
 
     try {
-        // Search MAL
         const searchUrl = `https://api.myanimelist.net/v2/anime?q=${encodeURIComponent(query)}&limit=1&fields=id,title,alternative_titles,main_picture,synopsis,mean,rank,num_episodes,status,media_type,rating,genres,studios,source`;
         const searchRes = await fetch(searchUrl, {
             headers: { 'X-MAL-CLIENT-ID': MAL_CLIENT },
@@ -44,7 +43,7 @@ async function handleAnime(
 
         if (!searchRes.ok) throw new Error(`MAL API error: ${searchRes.status}`);
 
-        const searchData = await searchRes.json();
+        const searchData = await searchRes.json() as any;
         const node = searchData?.data?.[0]?.node;
 
         if (!node) {
@@ -54,7 +53,6 @@ async function handleAnime(
             });
         }
 
-        // Normalise into AnimeInfo shape
         const anime: AnimeInfo = {
             mal_id:        node.id,
             title:         node.title,
@@ -114,7 +112,7 @@ async function handleUser(
 
         if (!apiRes.ok) throw new Error(`AniVault API error: ${apiRes.status}`);
 
-        const data = await apiRes.json();
+        const data = await apiRes.json() as any;
         if (!data.user) throw new Error('No user in response');
 
         const profile: ProfileInfo = data.user;
