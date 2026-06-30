@@ -6,13 +6,12 @@ import {
     InteractionResponseType,
     type APIChatInputApplicationCommandInteraction,
 } from 'discord-api-types/v10';
-import { buildAnimeEmbed, buildUserEmbed, type AnimeInfo, type ProfileInfo } from '../lib/embeds';
+import { buildAnimeEmbed, type AnimeInfo } from '../lib/embeds';
 
 export const config = { api: { bodyParser: false } };
 
 const MAL_CLIENT  = process.env.MAL_CLIENT_ID!;
 const RAILWAY_URL = process.env.RAILWAY_URL!;
-const DISCORD_APP_ID = process.env.DISCORD_APP_ID!;
 
 async function getRawBody(req: VercelRequest): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -23,17 +22,7 @@ async function getRawBody(req: VercelRequest): Promise<Buffer> {
     });
 }
 
-// Sends the final result as a Discord follow-up message (used after deferring)
-async function sendFollowUp(token: string, body: any) {
-    const url = `https://discord.com/api/v10/webhooks/${DISCORD_APP_ID}/${token}/messages/@original`;
-    await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-}
-
-// ── /anime handler (fast — responds immediately, no defer needed) ──
+// ── /anime handler (fast, no defer needed) ──
 async function handleAnime(
     cmd: APIChatInputApplicationCommandInteraction,
     res: VercelResponse
@@ -97,10 +86,10 @@ async function handleAnime(
     }
 }
 
-// ── /user handler (slow — FlareSolverr can take 10-30s, so we defer) ──
-// Step 1: respond instantly with "thinking..." (within Discord's 3s window)
-// Step 2: do the slow Railway/FlareSolverr lookup in the background
-// Step 3: PATCH the original message with the real result once ready
+// ── /user handler ──
+// Defer instantly, hand off the slow work (FlareSolverr + PHP) to Railway
+// entirely, and let Railway send the final Discord message itself —
+// Vercel's 10s function limit can't survive FlareSolverr's solve time.
 async function handleUser(
     cmd: APIChatInputApplicationCommandInteraction,
     res: VercelResponse
@@ -115,31 +104,22 @@ async function handleUser(
         });
     }
 
-    // 1. Immediately tell Discord "we're working on it"
+    // 1. Tell Discord "thinking..." immediately
     res.json({ type: InteractionResponseType.DeferredChannelMessageWithSource });
 
-    // 2. Do the slow work AFTER responding (Vercel keeps the function alive
-    //    until this promise resolves, since we don't return early)
+    // 2. Fire-and-forget to Railway — don't await the slow part,
+    //    just confirm Railway accepted the job
     try {
-        const apiUrl = `${RAILWAY_URL}/discord/user-lookup?username=${encodeURIComponent(username)}`;
-        const apiRes = await fetch(apiUrl, {
-            headers: { 'x-bot-secret': process.env.BOT_SECRET! },
+        await fetch(`${RAILWAY_URL}/discord/user-lookup`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-bot-secret': process.env.BOT_SECRET!,
+            },
+            body: JSON.stringify({ username, token }),
         });
-
-        if (apiRes.status === 404) {
-            return sendFollowUp(token, { content: `❌ User **${username}** not found on AniVault.` });
-        }
-
-        if (!apiRes.ok) throw new Error(`Relay error: ${apiRes.status}`);
-
-        const data = await apiRes.json() as any;
-        if (!data.user) throw new Error('No user in response');
-
-        const profile: ProfileInfo = data.user;
-        await sendFollowUp(token, { embeds: [buildUserEmbed(profile)] });
     } catch (err: any) {
-        console.error('[/user]', err?.message);
-        await sendFollowUp(token, { content: '❌ Failed to fetch user info. Try again later.' });
+        console.error('[/user] Failed to hand off to Railway:', err?.message);
     }
 }
 
