@@ -10,9 +10,9 @@ import { buildAnimeEmbed, buildUserEmbed, type AnimeInfo, type ProfileInfo } fro
 
 export const config = { api: { bodyParser: false } };
 
-const MAL_CLIENT   = process.env.MAL_CLIENT_ID!;
-// Route /user lookups through Railway (InfinityFree blocks Vercel's IPs directly)
-const RAILWAY_URL  = process.env.RAILWAY_URL!; // e.g. https://ap1249-production-304e.up.railway.app
+const MAL_CLIENT  = process.env.MAL_CLIENT_ID!;
+const RAILWAY_URL = process.env.RAILWAY_URL!;
+const DISCORD_APP_ID = process.env.DISCORD_APP_ID!;
 
 async function getRawBody(req: VercelRequest): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -23,7 +23,17 @@ async function getRawBody(req: VercelRequest): Promise<Buffer> {
     });
 }
 
-// ── /anime handler ────────────────────────────────────────────
+// Sends the final result as a Discord follow-up message (used after deferring)
+async function sendFollowUp(token: string, body: any) {
+    const url = `https://discord.com/api/v10/webhooks/${DISCORD_APP_ID}/${token}/messages/@original`;
+    await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+}
+
+// ── /anime handler (fast — responds immediately, no defer needed) ──
 async function handleAnime(
     cmd: APIChatInputApplicationCommandInteraction,
     res: VercelResponse
@@ -87,12 +97,17 @@ async function handleAnime(
     }
 }
 
-// ── /user handler ─────────────────────────────────────────────
+// ── /user handler (slow — FlareSolverr can take 10-30s, so we defer) ──
+// Step 1: respond instantly with "thinking..." (within Discord's 3s window)
+// Step 2: do the slow Railway/FlareSolverr lookup in the background
+// Step 3: PATCH the original message with the real result once ready
 async function handleUser(
     cmd: APIChatInputApplicationCommandInteraction,
     res: VercelResponse
 ) {
     const username = (cmd.data.options?.find(o => o.name === 'username') as any)?.value as string;
+    const token = cmd.token;
+
     if (!username) {
         return res.json({
             type: InteractionResponseType.ChannelMessageWithSource,
@@ -100,18 +115,19 @@ async function handleUser(
         });
     }
 
+    // 1. Immediately tell Discord "we're working on it"
+    res.json({ type: InteractionResponseType.DeferredChannelMessageWithSource });
+
+    // 2. Do the slow work AFTER responding (Vercel keeps the function alive
+    //    until this promise resolves, since we don't return early)
     try {
-        // Route through Railway proxy — InfinityFree blocks Vercel's IPs directly
         const apiUrl = `${RAILWAY_URL}/discord/user-lookup?username=${encodeURIComponent(username)}`;
         const apiRes = await fetch(apiUrl, {
             headers: { 'x-bot-secret': process.env.BOT_SECRET! },
         });
 
         if (apiRes.status === 404) {
-            return res.json({
-                type: InteractionResponseType.ChannelMessageWithSource,
-                data: { content: `❌ User **${username}** not found on AniVault.`, flags: 64 },
-            });
+            return sendFollowUp(token, { content: `❌ User **${username}** not found on AniVault.` });
         }
 
         if (!apiRes.ok) throw new Error(`Relay error: ${apiRes.status}`);
@@ -120,17 +136,10 @@ async function handleUser(
         if (!data.user) throw new Error('No user in response');
 
         const profile: ProfileInfo = data.user;
-
-        return res.json({
-            type: InteractionResponseType.ChannelMessageWithSource,
-            data: { embeds: [buildUserEmbed(profile)] },
-        });
+        await sendFollowUp(token, { embeds: [buildUserEmbed(profile)] });
     } catch (err: any) {
         console.error('[/user]', err?.message);
-        return res.json({
-            type: InteractionResponseType.ChannelMessageWithSource,
-            data: { content: '❌ Failed to fetch user info. Try again later.', flags: 64 },
-        });
+        await sendFollowUp(token, { content: '❌ Failed to fetch user info. Try again later.' });
     }
 }
 
